@@ -74,3 +74,5 @@ R-27：模型已完成而結果網路交付失敗，不能為了取得外部200�
 R-28：冷Claude只讀預檢負值或StatusReads讀取中世代變動時，推論CLI尚未啟動前可重新取得一次metadata；必須檢查取消／原期限，丟棄舊判定，確認新讀取的Ready及穩定世代才啟動一次CLI。第二次仍不通過、啟動等待後世代改變、Codex warm世代不符或模型已開始均不得重送／跳過。不得自動登入／切換訂閱／修改憑證，只存固定數字原因。[驗收](qa/2026-10-24-macos-auth-preflight.md)。
 
 R-29：依D-49，本輪Mac owner明確設定Codex文字LLM／Decisions各4常駐、inference_workers=inference_pending=32，API／provider共享，0≤8≤32≤32≤64。原設定工具須排空／停止／原子套用並保留接單狀態；常駐初始化不產生模型推論。僅要求零推論簡易驗證與同profile發布更新／失敗回復，不改其他安裝設定／Windows預設，不宣稱完整warm／32負載穩定度或#60修復。[限定驗收](qa/2026-10-24-macos-32-operator-release.md)。
+
+R-30：工具模式（tools）的 user 訊息可帶 image_url，供需要「看畫面再決定下一步」的 agent（例：截圖檢查後再提案修改）使用。序列化歷史不得內嵌 base64，改以「[image N]」標記，圖片依序附在序列化內容之後，沿用一般 Chat 的圖片驗證（data URL、單張≤2 MB、請求≤3 MB）與 Codex 圖片輸入；一次最多 8 張。system／developer／assistant／tool 訊息仍僅文字，其他 content part 類型照舊拒絕。不寫圖片暫存檔、不下載遠端 URL。

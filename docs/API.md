@@ -62,7 +62,7 @@ Decisions／模型查詢完整欄位與範例見 [專用指南](JEV-COMPATIBILIT
 
 content 為 string 或非空 parts；支援 text 及 PNG／JPEG／WebP／GIF base64 data image_url，每張解碼≤2 MB，整個請求≤3 MB。不下載遠端 URL、不讀呼叫者本機檔、不寫圖片暫存檔；音訊／影片／PDF 拒絕。system／developer／assistant 歷史僅文字。image detail 可 auto／low／high；Claude 僅 auto。
 
-工具模式接受文字歷史、assistant.tool_calls 與對應 tool_call_id 的 tool result；未完成或不存在的 call id 拒絕。function 名稱唯一且 schema 根為 object，不接受 $ref／$dynamicRef。adapter 將結構化輸出轉成 OpenRouter 風格 tool_calls，再以原函式 schema 驗 arguments；失敗 502 invalid_tool_proposal。執行權與工具結果由呼叫端決定。此模式不是 CLI 原生完整 function calling，也不支援圖像與 tools 混用。
+工具模式接受文字歷史、assistant.tool_calls 與對應 tool_call_id 的 tool result；未完成或不存在的 call id 拒絕。function 名稱唯一且 schema 根為 object，不接受 $ref／$dynamicRef。adapter 將結構化輸出轉成 OpenRouter 風格 tool_calls，再以原函式 schema 驗 arguments；失敗 502 invalid_tool_proposal。執行權與工具結果由呼叫端決定。此模式不是 CLI 原生完整 function calling。依 R-30，user 訊息可帶 image_url（規則同上：base64 data URL、每張≤2 MB、整個請求≤3 MB），一次最多 8 張；序列化歷史中以「[image N]」標記位置，圖片依序附在序列化內容之後交給模型。system／developer／assistant／tool 訊息仍僅文字。
 
 ## 回應與計量
 
