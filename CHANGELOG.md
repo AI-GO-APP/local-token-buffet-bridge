@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Windows 0.9.5：以 core 0.9.18 重新打包 Windows internal 安裝器，帶入 D-50 圖片／請求上限照上游（請求 32 MiB、Claude 每張 10 MB、Codex 不另設、取消工具模式 8 張）。
+- Worker 0.9.6-relay 由擁有者對原 Worker 另行部署；安裝器更新本身不部署 Worker，沿用原 URL／device／KEY。
 - Windows 0.9.4：以 core 0.9.17 重新打包 Windows internal 安裝器，帶入 0.9.3 之後共用 core 的修改（含工具模式接受 user 訊息圖片）。
 - 只發布 Windows；不部署 Worker、不觸發 Mac release，更新沿用原 URL／device／KEY。
 
