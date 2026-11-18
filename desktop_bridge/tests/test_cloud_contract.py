@@ -130,11 +130,39 @@ def test_tool_mode_attaches_user_images_after_serialized_conversation(tmp_path):
     ([{'role':'system','content':[IMG]},{'role':'user','content':'x'}],400),
     ([{'role':'user','content':[{'type':'image_url','image_url':{'url':'https://example.invalid/a.png'}}]}],400),
     ([{'role':'user','content':[{'type':'audio','audio':{}}]}],400),
-    ([{'role':'user','content':[IMG]*9}],400),
+    ([{'role':'user','content':[{'type':'image_url','image_url':{'url':'data:image/png;base64,'}}]}],400),
 ])
 def test_tool_mode_image_rules(messages,status,tmp_path):
     s=Store(tmp_path);_,key=s.create_key('agent')
     try:
         with pytest.raises(BridgeError) as error:validate({**BODY,'tools':TOOLS,'messages':messages},s,s.authenticate(key))
         assert error.value.status==status
+    finally:s.close()
+
+
+def _image(decoded_bytes):
+    import base64
+    return {'type':'image_url','image_url':{'url':'data:image/png;base64,'+base64.b64encode(bytes([137])*decoded_bytes).decode()}}
+
+def test_tool_mode_has_no_bridge_image_count(tmp_path):
+    # D-50: the former 8-image cap was Bridge policy; Chat mode never had one.
+    s=Store(tmp_path);_,key=s.create_key('agent')
+    try:
+        spec=validate({**BODY,'tools':TOOLS,'messages':[{'role':'user','content':[IMG]*20}]},s,s.authenticate(key))
+        assert [p['type'] for p in spec.messages[-1]['parts']].count('image_url')==20
+    finally:s.close()
+
+def test_image_ceiling_follows_provider_upstream(tmp_path):
+    from desktop_bridge.limits import CLAUDE_MAX_IMAGE_BASE64
+    s=Store(tmp_path);_,key=s.create_key('agent');caller=s.authenticate(key)
+    try:
+        # Above the former 2 MB Bridge cap: Codex resizes images itself; no per-image Bridge cap.
+        big=_image(6_000_000)
+        assert validate({**BODY,'messages':[{'role':'user','content':[big]}]},s,caller).messages[-1]['parts'][0]['type']=='image_url'
+        claude={**BODY,'model':'anthropic/claude-haiku-4.5'}
+        largest=CLAUDE_MAX_IMAGE_BASE64//4*3  # base64 length exactly at the Claude API ceiling
+        validate({**claude,'messages':[{'role':'user','content':[_image(largest)]}]},s,caller)
+        with pytest.raises(BridgeError) as error:
+            validate({**claude,'messages':[{'role':'user','content':[_image(largest+3)]}]},s,caller)
+        assert error.value.status==413
     finally:s.close()

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .schema_guard import check_schemas
 
 from .errors import BridgeError
+from .limits import CLAUDE_MAX_IMAGE_BASE64
 
 SUPPORTED = {"messages", "model", "stream", "response_format", "reasoning", "reasoning_effort", "user", "metadata", "session_id", "provider"}
 NULLABLE_UNSUPPORTED = {"frequency_penalty", "logit_bias", "logprobs", "max_completion_tokens", "max_tokens",
@@ -113,8 +114,12 @@ def validate(body, settings, caller):
                         raw=base64.b64decode(url.split(",",1)[1],validate=True)
                     except ValueError:
                         raise BridgeError(400,"invalid_request","圖片 base64 無效。","messages.content") from None
-                    if not raw or len(raw)>2_000_000:
-                        raise BridgeError(413,"request_too_large","單張圖片上限為 2 MB。")
+                    if not raw:
+                        raise BridgeError(400,"invalid_request","圖片內容不可為空。","messages.content")
+                    # Per-image ceiling follows the provider (D-50): Claude API 10 MB base64;
+                    # Codex resizes images itself, so only the request ceiling applies.
+                    if model["provider"]=="claude" and len(url.split(",",1)[1])>CLAUDE_MAX_IMAGE_BASE64:
+                        raise BridgeError(413,"request_too_large","Claude 單張圖片上限為 10 MB（base64 編碼後，同 Claude API）。")
                     parts.append({"type":"image_url","image_url":{"url":url,"detail":image.get("detail","auto")}})
                 else:
                     bad("messages.content", "P1 content 支援文字與 image_url。")

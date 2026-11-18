@@ -220,3 +220,19 @@ def test_cli_attach_preserves_live_requests_and_existing_logs(tmp_path):
     restarted=Store(tmp_path)
     assert {r["id"]:r["status"] for r in restarted.logs()}=={"running":"interrupted"}
     restarted.close()
+
+
+def test_request_ceiling_follows_upstream_not_former_3mb(system):
+    """D-50: a request with a 6 MB image (former Bridge cap: 2 MB image / 3 MB body) is accepted;
+    only bodies above the 32 MiB upstream request ceiling are refused before reading."""
+    import base64, socket
+    from desktop_bridge.limits import MAX_REQUEST_BYTES
+    store,rt,api,key,calls=system
+    image="data:image/png;base64,"+base64.b64encode(bytes([137])*6_000_000).decode()
+    body={"messages":[{"role":"user","content":[{"type":"text","text":"synthetic"},{"type":"image_url","image_url":{"url":image}}]}]}
+    status,_=request(api,key,body)
+    assert status==200 and calls[-1].messages[-1]["parts"][1]["image_url"]["url"]==image
+    with socket.create_connection(("127.0.0.1",api.port),timeout=10) as wire:
+        wire.sendall((f"POST /api/v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {key}\r\n"
+                      f"Content-Type: application/json\r\nContent-Length: {MAX_REQUEST_BYTES+1}\r\n\r\n").encode())
+        assert b" 413 " in wire.recv(4096).split(b"\r\n",1)[0]

@@ -8,11 +8,14 @@ import time
 from .errors import BridgeError
 from .process import Child, check_cancel
 from .execution_budget import timed
+from .limits import MAX_REQUEST_BYTES
 
 
 class CodexSession:
-    MAX_LINE = 4_000_000
-    MAX_BUFFER = 8_000_000
+    # app-server may echo user input items (including data-URL images) in
+    # item/started and item/completed; one line must fit a full request (D-50).
+    MAX_LINE = MAX_REQUEST_BYTES + 4_000_000
+    MAX_BUFFER = 2 * MAX_LINE
 
     def __init__(self, command, cwd, env, cancel, timeout, *, generation=None, profile='standard'):
         self.cwd = str(cwd)
