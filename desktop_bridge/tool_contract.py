@@ -6,7 +6,6 @@ from .schema_guard import check_schemas,validate_instances
 from .errors import BridgeError
 
 
-MAX_TOOL_IMAGES=8
 IMAGE_NOTE=' User messages may reference images as "[image N]"; those images are attached after the serialized conversation, in order (the first attached image is image 1).'
 
 
@@ -32,7 +31,7 @@ def _detach_images(messages):
                 texts.append(f'[image {len(images)}]')
             else:raise BridgeError(400,'unsupported_parameter','content 支援文字與 image_url。','messages.content')
         out.append({**m,'content':'\n'.join(texts)})
-    if len(images)>MAX_TOOL_IMAGES:raise BridgeError(400,'unsupported_parameter',f'工具模式一次最多 {MAX_TOOL_IMAGES} 張圖片。','messages.content')
+    # No Bridge image count (D-50): same as plain Chat; the provider enforces its own.
     return out,images
 
 

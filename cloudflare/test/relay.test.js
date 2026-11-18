@@ -50,34 +50,77 @@ test('batch byte cap counts encoded escaping and leaves remainder queued',async(
  }finally{for(const item of r.pending.values()){clearTimeout(item.timer);item.resolve(Response.json({ok:true}));}r.pending.clear();await Promise.all(external);}
 });
 
-test('waiting poll also bounds an oversized escaped envelope before dispatch',async()=>{
+test('legacy agent gets 413 for a work it cannot read; nothing is dispatched or left pending',async()=>{
  const r=new DeviceRelay({}, {DEVICE_KEY:device}),key='synthetic-waiting-key',keys=[await digest(key)];
  const waiting=r.fetch(req('/agent/poll',{key_digests:keys,batch_size:8}));
  await new Promise(resolve=>setTimeout(resolve,10));
+ // 1.1M control bytes escape to 6.6 MB, above the 6.1 MB a pre-D-50 agent reads.
  const external=r.fetch(new Request('https://test.workers.dev/api/v1/chat/completions',{
   method:'POST',headers:{Authorization:'Bearer '+key},body:'\u0000'.repeat(1_100_000)}));
+ assert.equal((await external).status,413);
+ assert.equal(r.pending.size,0);assert.equal(r.bytes,0);
+ r.waiter(null);assert.deepEqual((await(await waiting).json()).requests,[]);
+});
+
+test('D-50 agent receives one large work alone, byte-identical to JSON.stringify',async()=>{
+ const r=new DeviceRelay({}, {DEVICE_KEY:device}),key='synthetic-large-key',keys=[await digest(key)];
+ r.keys=new Set(keys);r.lastSeen=Date.now();
+ const image='data:image/png;base64,'+'A'.repeat(12_000_000);
+ const big=JSON.stringify({messages:[{role:'user',content:[{type:'text',text:'q"\\\u0001\n中'},{type:'image_url',image_url:{url:image}}]}]});
+ const small=JSON.stringify({messages:[{role:'user',content:'synthetic'}]});
+ const external=[r.fetch(req('/api/v1/chat/completions',JSON.parse(small),key)),
+  r.fetch(new Request('https://test.workers.dev/api/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+key},body:big})),
+  r.fetch(req('/api/v1/chat/completions',JSON.parse(small),key))];
+ await new Promise(resolve=>setTimeout(resolve,50));
  try{
-  assert.equal((await waiting).status,502);
-  assert.equal(r.pending.size,1);
-  assert.ok([...r.pending.values()].every(x=>!x.dispatched));
- }finally{for(const item of r.pending.values()){clearTimeout(item.timer);item.resolve(Response.json({ok:true}));}r.pending.clear();await external;}
+  assert.ok(r.bytes>12_000_000);
+  const poll=()=>r.fetch(req('/agent/poll',{key_digests:keys,batch_size:8,max_work_bytes:2*32*1024*1024+65536}));
+  const first=(await(await poll()).json()).requests;
+  assert.equal(first.length,1);assert.equal(first[0].body,small);
+  const raw=await(await poll()).text();
+  const second=JSON.parse(raw).requests;
+  assert.equal(second.length,1);assert.equal(second[0].body,big);
+  assert.ok(new TextEncoder().encode(raw).byteLength>6_100_000);
+  assert.equal((await(await poll()).json()).requests.length,1);
+  assert.equal(r.bytes,0);
+  const health=await(await r.fetch(new Request('https://test.workers.dev/health'))).json();
+  assert.equal(health.max_request_bytes,32*1024*1024);
+ }finally{for(const item of r.pending.values()){clearTimeout(item.timer);item.resolve(Response.json({ok:true}));}r.pending.clear();await Promise.all(external);}
+});
+
+test('request ceiling is 32 MiB and pending bytes share one memory budget',async()=>{
+ const r=new DeviceRelay({}, {DEVICE_KEY:device}),key='synthetic-budget-key';
+ r.keys.add(await digest(key));r.lastSeen=Date.now();
+ const post=(body,length)=>{const request=new Request('https://test.workers.dev/api/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+key},body});
+  if(length!==undefined)request.headers.set('content-length',String(length));return r.fetch(request);};
+ assert.equal((await post('{}',32*1024*1024+1)).status,413);
+ assert.equal((await post('x'.repeat(32*1024*1024+1))).status,413);
+ assert.equal(r.bytes,0);assert.equal(r.reading,0);
+ const held=[post('"'+'A'.repeat(30*1024*1024)+'"'),post('"'+'B'.repeat(19*1024*1024)+'"')];
+ await new Promise(resolve=>setTimeout(resolve,50));
+ assert.equal(r.pending.size,1);
+ assert.equal((await held[1]).status,429);
+ assert.equal((await post('{}',20*1024*1024)).status,429);
+ for(const item of r.pending.values()){clearTimeout(item.timer);r.release(item);item.resolve(Response.json({ok:true}));}
+ r.pending.clear();await held[0];assert.equal(r.bytes,0);
+ assert.equal((await post(new Uint8Array([0x7b,0xff,0xfe,0x7d]))).status,400);
 });
 
 test('queue reserves capacity before asynchronous body reads and releases failures',async()=>{
  const relay=new DeviceRelay({}, {DEVICE_KEY:device});const key='synthetic-queue-key';
  relay.keys.add(await digest(key));relay.lastSeen=Date.now();
  const release=[];
- relay.body=async()=>new Promise(resolve=>release.push(resolve));
+ relay.workBody=async()=>new Promise(resolve=>release.push(resolve));
  const work=Array.from({length:67},()=>relay.fetch(req('/api/v1/chat/completions',{},key)));
  await new Promise(resolve=>setTimeout(resolve,20));
  assert.equal(release.length,64);assert.equal(relay.reading,64);
- release.forEach(resolve=>resolve('{}'));
+ release.forEach(resolve=>resolve({parts:[new TextEncoder().encode('{}')],size:2}));
  await new Promise(resolve=>setTimeout(resolve,20));
  assert.equal(relay.pending.size,64);assert.equal(relay.reading,0);
  for(const item of relay.pending.values()){clearTimeout(item.timer);item.resolve(new Response('{}'));}
  relay.pending.clear();const responses=await Promise.all(work);
  assert.equal(responses.filter(r=>r.status===429).length,3);
- relay.body=async()=>{throw Error('synthetic body failure')};
+ relay.workBody=async()=>{throw Error('synthetic body failure')};
  assert.equal((await relay.fetch(req('/api/v1/chat/completions',{},key))).status,400);
  assert.equal(relay.reading,0);assert.equal(relay.pending.size,0);
 });
@@ -89,7 +132,7 @@ test('outer build header preserves the original actor identity and response',asy
  }}};
  const res=await worker.fetch(new Request('https://test.workers.dev/health'),env);
  assert.equal(actor,'primary-device');
- assert.equal(res.headers.get('X-Bridge-Relay-Version'),'0.9.5-relay');
+ assert.equal(res.headers.get('X-Bridge-Relay-Version'),'0.9.6-relay');
  assert.equal(res.headers.get('Cache-Control'),'no-store');
  assert.equal((await res.json()).version,'legacy');
 });

@@ -75,4 +75,6 @@ R-28：冷Claude只讀預檢負值或StatusReads讀取中世代變動時，推�
 
 R-29：依D-49，本輪Mac owner明確設定Codex文字LLM／Decisions各4常駐、inference_workers=inference_pending=32，API／provider共享，0≤8≤32≤32≤64。原設定工具須排空／停止／原子套用並保留接單狀態；常駐初始化不產生模型推論。僅要求零推論簡易驗證與同profile發布更新／失敗回復，不改其他安裝設定／Windows預設，不宣稱完整warm／32負載穩定度或#60修復。[限定驗收](qa/2026-10-24-macos-32-operator-release.md)。
 
-R-30：工具模式（tools）的 user 訊息可帶 image_url，供需要「看畫面再決定下一步」的 agent（例：截圖檢查後再提案修改）使用。序列化歷史不得內嵌 base64，改以「[image N]」標記，圖片依序附在序列化內容之後，沿用一般 Chat 的圖片驗證（data URL、單張≤2 MB、請求≤3 MB）與 Codex 圖片輸入；一次最多 8 張。system／developer／assistant／tool 訊息仍僅文字，其他 content part 類型照舊拒絕。不寫圖片暫存檔、不下載遠端 URL。
+R-30：工具模式（tools）的 user 訊息可帶 image_url，供需要「看畫面再決定下一步」的 agent（例：截圖檢查後再提案修改）使用。序列化歷史不得內嵌 base64，改以「[image N]」標記，圖片依序附在序列化內容之後，沿用一般 Chat 的圖片驗證（data URL；大小上限依 R-31）與 Codex 圖片輸入；張數不設 Bridge 上限（原 8 張依 D-50 取消）。system／developer／assistant／tool 訊息仍僅文字，其他 content part 類型照舊拒絕。不寫圖片暫存檔、不下載遠端 URL。
+
+R-31：依 D-50，請求與圖片大小上限照 Bridge 所依賴的上游，不自訂更小的值：請求 body≤32 MiB（Claude Code 請求上限；Codex／OpenAI 512 MB、Claude API 128 MB、Cloudflare Workers Free／Pro 100 MB 皆較大）；Claude 每張 base64 後≤10 MB（Claude API）；Codex 不另設每張上限（Codex 自行縮圖，解碼防呆≥79 MiB）；不設 Bridge 張數上限。Relay 傳輸須能送達：Worker 以 48 MiB 待送總量預算保護 Durable Object 128 MB 記憶體，超額回 429；單筆超過 6.1 MB 的工作只送給宣告可讀的 agent，舊 agent 回 413、不派送。

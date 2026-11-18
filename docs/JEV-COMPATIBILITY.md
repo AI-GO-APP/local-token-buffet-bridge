@@ -50,7 +50,7 @@ GET 與 refresh 不執行推論；probe 會消耗訂閱用量，使用既有佇�
 
 ## 第一版範圍
 
-- state 支援 string、object、array，每請求最多 100 題、body 3 MB。
+- state 支援 string、object、array，每請求最多 100 題；state／instructions JSON 各≤3 MB（Decisions 自訂，D-50 未調整），request body 上限 32 MiB。
 - 題型為 noul、choice、score。instructions 必須存在，可為 string、object、array、null。
 - choice 1–255 選項，score 2–10 個依序等級；criteria 描述保留結構化 JSON。同機率選原排列的第一個。
 - noul criteria 可省略；提供時只能有 true／false 描述。user、session_id 上限 256 字，trace 是最多 16 組、8 KiB 的 object；接受後不傳模型、不持久保存。

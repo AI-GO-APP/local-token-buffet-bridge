@@ -10,6 +10,8 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
+from desktop_bridge.limits import MAX_REQUEST_BYTES
+
 import pytest
 
 from desktop_bridge import relay as module
@@ -253,9 +255,29 @@ def test_batch_and_legacy_decode_reject_entire_malformed_batch():
     for value in values:
         with pytest.raises(ValueError): decode_work(value, requested=1)
     for patch in ({'deadline': float('nan')}, {'deadline': True}, {'deadline': (time.time()+1000)*1000},
-                  {'authorization': 'Bearer synthetic\r\nInjected: fixture'}, {'body': '字'*1_000_001}):
+                  {'authorization': 'Bearer synthetic\r\nInjected: fixture'}, {'body': '字'*(MAX_REQUEST_BYTES//3+1)}):
         with pytest.raises(ValueError): decode_work({'requests': [dict(first, **patch)]})
 
+
+
+def test_relay_accepts_upstream_sized_body_and_declares_work_limit(tmp_path, monkeypatch):
+    """D-50: 3 MB was Bridge policy; the relay follows the 32 MiB upstream request ceiling."""
+    from desktop_bridge.limits import MAX_RELAY_WORK_BYTES
+    assert decode_work({'request': dict(work(), body='x' * MAX_REQUEST_BYTES)})[0]['body'] == 'x' * MAX_REQUEST_BYTES
+    store = Store(tmp_path); store.set('public_url', 'https://synthetic.invalid')
+    relay = Relay(store, 0); session = relay.session; seen = []
+    monkeypatch.setattr(module.secret, 'load', lambda _: 'synthetic')
+    def poll(*args, **kwargs):
+        seen.append((args[2].get('max_work_bytes'), kwargs.get('limit')))
+        relay.stop()
+        return {'requests': []}
+    monkeypatch.setattr(session.poll, 'json', poll)
+    try:
+        relay.start()
+        deadline = time.monotonic() + 2
+        while not seen and time.monotonic() < deadline: time.sleep(.005)
+        assert seen and seen[0][0] == MAX_RELAY_WORK_BYTES and seen[0][1] >= MAX_RELAY_WORK_BYTES
+    finally: relay.stop(); store.close()
 
 def test_loop_bounds_all_submitted_work(tmp_path, monkeypatch):
     store = Store(tmp_path); store.set('public_url', 'https://synthetic.invalid')

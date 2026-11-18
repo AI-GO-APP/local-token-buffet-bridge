@@ -19,6 +19,7 @@ from .execution_budget import Budget, scope, timed
 from . import __version__, providers
 from .contract import validate
 from .errors import BridgeError
+from .limits import MAX_REQUEST_BYTES
 from .pricing import Catalog, combine_usage
 from .model_catalog import ModelCatalog
 from .decision_contract import DecisionSpec, strict_loads, validate as validate_decisions
@@ -530,7 +531,7 @@ class ApiServer:
                         raise BridgeError(400,"invalid_request","請使用 Content-Length，P1 不接受 chunked request。")
                     try: length=int(self.headers.get("Content-Length","0"))
                     except ValueError: raise BridgeError(400,"invalid_request","Content-Length 無效。") from None
-                    if not 0<length<=3_000_000: raise BridgeError(413,"request_too_large","Request body 上限為 3 MB。")
+                    if not 0<length<=MAX_REQUEST_BYTES: raise BridgeError(413,"request_too_large","Request body 上限為 32 MiB（同 Claude Code 請求上限）。")
                     if self.headers.get("Content-Type","").split(";",1)[0].strip()!="application/json":
                         raise BridgeError(415,"invalid_request","請使用 application/json。")
                     self.connection.settimeout(20)
@@ -587,7 +588,7 @@ class ApiServer:
                         try:
                             rt.store.insert_request({"id":uuid.uuid4().hex,"key_id":caller["id"] if caller else None,
                                 "created_ts":time.time(),"finished_ts":time.time(),"status":"rejected",
-                                "http_status":error.status,"error_code":error.category,"input_bytes":max(0,min(length,3_000_000))})
+                                "http_status":error.status,"error_code":error.category,"input_bytes":max(0,min(length,MAX_REQUEST_BYTES))})
                         except Exception: pass
                     error_body=error.body()
                     if task is not None and task.done.is_set() and error.status==408:

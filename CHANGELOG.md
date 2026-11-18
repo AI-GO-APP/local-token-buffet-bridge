@@ -5,6 +5,11 @@
 - Windows 0.9.4：以 core 0.9.17 重新打包 Windows internal 安裝器，帶入 0.9.3 之後共用 core 的修改（含工具模式接受 user 訊息圖片）。
 - 只發布 Windows；不部署 Worker、不觸發 Mac release，更新沿用原 URL／device／KEY。
 
+## [0.9.18] - 2026-11-18
+
+- 依 D-50 圖片／請求上限照上游：請求 body 3 MB→32 MiB（Claude Code 請求上限）；Claude 每張 2 MB（解碼）→10 MB（base64，同 Claude API）；Codex 不另設每張上限；取消工具模式 8 張上限。
+- Worker 0.9.6-relay：body 逐塊 JSON 跳脫、48 MiB 待送總量預算（Durable Object 128 MB），超 6.1 MB 的單筆只送給宣告 `max_work_bytes` 的 agent，舊 agent 回 413 不派送；需擁有者另行部署，未部署前經 Worker 的請求仍受 3 MB 限制。
+
 ## [0.9.17] - 2026-11-18
 
 - 工具模式（tools）接受 user 訊息的 image_url：序列化歷史以「[image N]」標記，圖片附在序列化內容後，走既有圖片驗證與 Codex 圖片輸入；一次最多 8 張，其他角色仍僅文字。之前同時帶 tools 與圖片一律回 400「工具模式暫僅接受文字」。

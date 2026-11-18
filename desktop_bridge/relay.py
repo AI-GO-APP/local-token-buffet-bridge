@@ -11,10 +11,14 @@ import uuid
 import certifi
 
 from . import secret
+from .limits import MAX_REQUEST_BYTES, MAX_RELAY_WORK_BYTES
 from .capacity import STANDARD_CONCURRENCY, CONTROL_CONCURRENCY, is_inference_request
 from .relay_transport import Connections, COST_HEADERS, NoRedirect, parse_json, TransportError
 
-MAX_CLOUD_BODY = 6_100_000
+# One poll returns at most 8 works within 6.1 MB, or a single larger work up to
+# the size this agent declares in max_work_bytes (Worker 0.9.6-relay, D-50).
+MAX_CLOUD_BODY = MAX_RELAY_WORK_BYTES + 65536
+POLL_TIMEOUT = 60
 MAX_BATCH = 8
 MAX_FORWARD = STANDARD_CONCURRENCY + CONTROL_CONCURRENCY
 MAX_SEEN = 4096
@@ -51,7 +55,7 @@ def decode_work(value, requested=MAX_BATCH):
         authorization, body, deadline = (work.get(k) for k in ('authorization', 'body', 'deadline'))
         if (not isinstance(authorization, str) or not authorization.startswith('Bearer ')
                 or len(authorization) > 263 or '\r' in authorization or '\n' in authorization
-                or not isinstance(body, str) or len(body.encode()) > 3_000_000
+                or not isinstance(body, str) or len(body.encode()) > MAX_REQUEST_BYTES
                 or type(deadline) not in (int, float) or not math.isfinite(deadline)
                 or not 0 < deadline < 1e14 or deadline > (time.time() + 120) * 1000):
             raise ValueError('Invalid relay work')
@@ -154,7 +158,8 @@ class Relay:
                 with self.store.lock:
                     digests = [row[0] for row in self.store.db.execute('select digest from api_keys where revoked_ts is null')]
                 item = session.poll.json(base, '/agent/poll', {
-                    'key_digests': digests, 'agent_session': session.id, 'batch_size': requested}, device_key)
+                    'key_digests': digests, 'agent_session': session.id, 'batch_size': requested,
+                    'max_work_bytes': MAX_RELAY_WORK_BYTES}, device_key, limit=MAX_CLOUD_BODY, timeout=POLL_TIMEOUT)
                 if session.stop.is_set(): break
                 works = decode_work(item, requested)
                 with session.condition:
