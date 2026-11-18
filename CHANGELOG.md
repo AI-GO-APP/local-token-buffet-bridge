@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Windows 0.9.4：以 core 0.9.17 重新打包 Windows internal 安裝器，帶入 0.9.3 之後共用 core 的修改（含工具模式接受 user 訊息圖片）。
+- 只發布 Windows；不部署 Worker、不觸發 Mac release，更新沿用原 URL／device／KEY。
+
 ## [0.9.17] - 2026-11-18
 
 - 工具模式（tools）接受 user 訊息的 image_url：序列化歷史以「[image N]」標記，圖片附在序列化內容後，走既有圖片驗證與 Codex 圖片輸入；一次最多 8 張，其他角色仍僅文字。之前同時帶 tools 與圖片一律回 400「工具模式暫僅接受文字」。
