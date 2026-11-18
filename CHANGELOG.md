@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.9.17] - 2026-11-18
+
+- 工具模式（tools）接受 user 訊息的 image_url：序列化歷史以「[image N]」標記，圖片附在序列化內容後，走既有圖片驗證與 Codex 圖片輸入；一次最多 8 張，其他角色仍僅文字。之前同時帶 tools 與圖片一律回 400「工具模式暫僅接受文字」。
+
 ## [0.9.16-mac.1] - 2026-10-24
 
 - 依owner明確要求交付Mac限定32 operator設定：LLM／Decisions共用workers32與pending32，保留Codex minimal4＋standard4；Claude cold、常駐初始化不推論。原設定工具已支援，無新增推論／Relay協定變更。

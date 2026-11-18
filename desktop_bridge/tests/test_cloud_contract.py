@@ -104,3 +104,37 @@ def test_full_agent_tool_count_and_invalid_arguments_keep_real_usage(tmp_path):
     assert 'result' not in receipt and receipt['billing']['usage']['cost']>0
     assert receipt['billing']['usage']['prompt_tokens']==10
     rt.stop();s.close()
+
+
+# Synthetic 1x1 PNG; tool mode used to reject any image ("工具模式暫僅接受文字").
+PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg=='
+IMG={'type':'image_url','image_url':{'url':PNG}}
+
+def test_tool_mode_attaches_user_images_after_serialized_conversation(tmp_path):
+    s=Store(tmp_path);_,key=s.create_key('agent')
+    try:
+        msgs=[{'role':'user','content':[{'type':'text','text':'synthetic screen'},IMG]},
+              {'role':'assistant','content':None,'tool_calls':[{'id':'c1','type':'function','function':{'name':'sum','arguments':'{"a":1}'}}]},
+              {'role':'tool','tool_call_id':'c1','content':'1'},
+              {'role':'user','content':[IMG,{'type':'text','text':'compare'}]}]
+        spec=validate({**BODY,'tools':TOOLS,'messages':msgs},s,s.authenticate(key))
+        parts=spec.messages[-1]['parts']
+        assert [p['type'] for p in parts]==['text','image_url','image_url']
+        assert all(p['image_url']['url']==PNG for p in parts[1:])
+        serialized=json.loads(parts[0]['text'])['messages']
+        assert serialized[0]['content']=='synthetic screen\n[image 1]' and serialized[3]['content']=='[image 2]\ncompare'
+        assert PNG not in parts[0]['text'] and spec.tool_proposals
+    finally:s.close()
+
+@pytest.mark.parametrize('messages,status',[
+    ([{'role':'system','content':[IMG]},{'role':'user','content':'x'}],400),
+    ([{'role':'user','content':[{'type':'image_url','image_url':{'url':'https://example.invalid/a.png'}}]}],400),
+    ([{'role':'user','content':[{'type':'audio','audio':{}}]}],400),
+    ([{'role':'user','content':[IMG]*9}],400),
+])
+def test_tool_mode_image_rules(messages,status,tmp_path):
+    s=Store(tmp_path);_,key=s.create_key('agent')
+    try:
+        with pytest.raises(BridgeError) as error:validate({**BODY,'tools':TOOLS,'messages':messages},s,s.authenticate(key))
+        assert error.value.status==status
+    finally:s.close()
